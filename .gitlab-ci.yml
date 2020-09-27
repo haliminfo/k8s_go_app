@@ -1,0 +1,42 @@
+image: docker:latest
+services:
+  - docker:dind
+
+stages:
+  - build
+  - deploy
+
+variables:
+  #CONTAINER_IMAGE: haliminfo/go-hello-world:${CI_COMMIT_SHORT_SHA}
+  #CONTAINER_IMAGE: <votre gitlab registry>:5050/root/k8s:${CI_COMMIT_SHORT_SHA}
+  CONTAINER_IMAGE: <votre gitlab registry>:5050/root/k8s:${CI_PROJECT_NAME} 
+  #DOCKER_DRIVER: overlay2
+  #DOCKER_HOST: tcp://localhost:2376
+
+before_script: 
+    - echo "Welcom to My CI/CD K8S"
+    - echo ${CI_PROJECT_NAME}
+    - docker info
+    #- cat /root/.docker/config.json
+build:
+  stage: build
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t ${CONTAINER_IMAGE} .
+    - docker tag ${CONTAINER_IMAGE} ${CONTAINER_IMAGE}
+    - docker tag ${CONTAINER_IMAGE}  <votre gitlab registry>:5050/root/k8s:latest
+    - docker push ${CONTAINER_IMAGE}
+  only: 
+      - master  
+deploy:
+  stage: deploy
+  image: dtzar/helm-kubectl
+  script:
+    - kubectl config set-cluster k8s --server="${SERVER}"
+    - kubectl config set clusters.k8s.certificate-authority-data ${CERTIFICATE_AUTHORITY_DATA}
+    - kubectl config set-credentials gitlab --token="${USER_TOKEN}"
+    - kubectl config set-context default --cluster=k8s --user=gitlab
+    - kubectl config use-context default
+    - sed -i "s/<VERSION>/${CI_PROJECT_NAME}/g" deployment.yaml
+    - kubectl apply -f deployment.yaml
+    - kubectl apply -f svc.yaml
